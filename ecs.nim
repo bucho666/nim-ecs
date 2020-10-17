@@ -1,4 +1,4 @@
-import unittest, typetraits, tables, hashes
+import unittest, typetraits, tables, hashes, macros, strformat
 
 type
   EntityId = uint64
@@ -78,8 +78,9 @@ proc deleteEntity(self: World, entity: Entity) =
   for c in self.compornents.values:
     c.remove(entity)
 
-proc assign*[T](self: Entity, compornent: T) {.inline.} =
+proc with*[T](self: Entity, compornent: T): Entity {.inline, discardable.} =
   self.world.assign(self, compornent)
+  self
 
 proc get*(self: Entity, T: typedesc): T {.inline.} =
   self.world.get(self, T)
@@ -89,6 +90,30 @@ proc isValid*(self: Entity): bool {.inline.} =
 
 proc has*(self: Entity, T: typedesc): bool {.inline.} =
   self.world.has(T) and self.world.compornentsOf(T).has(self)
+
+macro hasAll*(self: Entity, types: varargs[typed]): untyped =
+  var body = ""
+  for t in types:
+    if len(body) > 0:
+      body.add(" and ")
+    body.add(fmt"{repr(self)}.has({repr(t)})")
+  parseStmt(body)
+
+macro getAll*(self: Entity, types: varargs[typed]): untyped =
+  var body = ""
+  for t in types:
+    if len(body) > 0:
+      body.add(", ")
+    body.add(fmt"{repr(self)}.get({repr(t)})")
+  parseStmt(fmt"({body})")
+
+macro getAllOrContinue*(self: Entity, types: varargs[typed]): untyped =
+  var typesList= ""
+  for t in types:
+    if len(typesList) > 0:
+      typesList.add(", ")
+    typesList.add(repr(t))
+  parseStmt(fmt"if {repr(self)}.hasAll({typesList}): {repr(self)}.getAll({typesList}) else: continue")
 
 proc delete*(self: Entity) =
   self.world.deleteEntity(self)
@@ -111,9 +136,7 @@ suite "ECS test":
     check(e.has(Coord) == false)
     check(e.has(int) == false)
     check(e.has(string) == false)
-    e.assign(Coord(x: 23, y: 9))
-    e.assign(255)
-    e.assign("string")
+    e.with(Coord(x: 23, y: 9)).with(255).with("string")
     check(e.has(Coord))
     check(e.has(int))
     check(e.has(string))
@@ -133,29 +156,49 @@ suite "ECS test":
     check(world.newEntity.id == 5)
     check(e1.id == 3)
     check(e1.isValid)
-    e1.assign(Foo())
-    e1.assign(42)
-    e2.assign(Foo())
-    e2.assign(43)
+    e1.with(Foo()).with(42)
+    e2.with(Foo()).with(43)
     e1.delete()
     check(e1.isValid == false)
     check(e2.isValid)
     check(e2.get(int) == 43)
     let e3 = world.newEntity
     check(e3.id == 6)
-    e3.assign(Foo())
-    e3.assign(44)
+    e3.with(Foo()).with(44)
     check(e3.has(Foo))
     check(e3.has(int))
     check(e3.get(int) == 44)
 
   test "for each":
     for n in 1..10:
-      let e = world.newEntity
-      e.assign(n * 2)
+      let e = world.newEntity.with(n * 2)
       if e.id == 5:
         e.delete()
     var result = newSeq[int]()
     for v in world.compornentsOf(int):
       result.add(v)
     check(result == [2, 4, 6, 8, 12, 14, 16, 18, 20])
+
+  test "hasAll":
+    type Foo = ref object
+    let
+      a = world.newEntity.with(42).with("string")
+      b = world.newEntity.with("string").with(Foo())
+      c = world.newEntity.with(23).with("hogehoge").with(Foo())
+    check(a.hasAll(int, string))
+    check(a.hasAll(int, string, Foo) == false)
+    check(b.hasAll(string, Foo))
+    check(b.hasAll(int, string, Foo) == false)
+    check(c.hasAll(int, string, Foo))
+
+  test "getAll":
+    let
+      a = world.newEntity.with(42).with("string")
+      b = world.newEntity.with("string").with(3.14)
+      c = world.newEntity.with(23).with("hogehoge").with(3.17)
+    check(a.hasAll(int, string))
+    check(b.hasAll(string, float))
+    check(c.hasAll(int, string, float))
+    check(a.getAll(int, string) == (42, "string"))
+    check(b.getAll(string, float) == ("string", 3.14))
+    check(c.getAll(int, string, float) == (23, "hogehoge", 3.17))

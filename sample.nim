@@ -10,11 +10,11 @@ proc `$`(self: Coord): string =
 let
   world = World()
   a = world.newEntity
+    .with(42)
+    .with("hello")
+    .with(Coord(x: 1, y:2))
   b = world.newEntity
-a.assign(42)
-a.assign("hello")
-a.assign(Coord(x: 1, y:2))
-b.assign(Coord(x: 3, y: 4))
+    .with(Coord(x: 3, y: 4))
 echo a.has(int)
 echo a.has(string)
 echo a.has(Coord)
@@ -30,8 +30,19 @@ echo b.get(Coord)
 for e, c in world.compornentsOf(Coord):
   c.x.inc
   c.y.inc
-  e.assign("world")
+  e.with("world")
 echo a.get(Coord)
 echo b.get(Coord)
 echo a.get(string)
 echo b.get(string)
+if a.hasAll(int, string, Coord):
+  let (number, str, c) = a.getAll(int, string, Coord)
+  echo number
+  echo str
+  echo c
+
+for e, c in world.compornentsOf(Coord):
+  let (number, str) = e.getAllOrContinue(int, string)
+  echo number
+  echo str
+  echo c
