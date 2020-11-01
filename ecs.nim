@@ -7,79 +7,80 @@ type
     id: EntityId
     world: World
 
-  AbstructCompornent = ref object of RootObj
+  AbstructComponent = ref object of RootObj
     index: Table[Entity, int]
     freeIndex: seq[int]
 
-  Compornent*[T] = ref object of AbstructCompornent
-    compornents: seq[T]
+  Component*[T] = ref object of AbstructComponent
+    components: seq[T]
 
   World* = ref object
     lastEntityId: EntityId
-    compornents: Table[string, AbstructCompornent]
+    components: Table[string, AbstructComponent]
 
 let InvalidEntityId: EntityId = 0
 
 proc hash*(self: Entity): Hash {.inline.} =
   self.id.hash
 
-proc has(self: AbstructCompornent, entity: Entity): bool {.inline.} =
+proc has(self: AbstructComponent, entity: Entity): bool {.inline.} =
   self.index.hasKey(entity)
 
-proc remove(self: AbstructCompornent, entity: Entity) =
-  self.freeIndex.add(self.index[entity])
-  self.index.del(entity)
+proc remove(self: AbstructComponent, entity: Entity) =
+  if self.has(entity):
+    self.freeIndex.add(self.index[entity])
+    self.index.del(entity)
 
-proc assign*[T](self: Compornent[T], entity: Entity, compornent: T) =
+proc assign*[T](self: Component[T], entity: Entity, component: T) =
   if self.index.hasKey(entity):
-    self.compornents[self.index[entity]] = compornent
+    self.components[self.index[entity]] = component
     return
   if self.freeIndex.len > 0:
     let index = self.freeIndex.pop
     self.index[entity] = index
-    self.compornents[index] = compornent
+    self.components[index] = component
     return
-  self.index[entity] = self.compornents.len
-  self.compornents.add(compornent)
+  self.index[entity] = self.components.len
+  self.components.add(component)
 
-proc get*[T](self: Compornent[T], entity: Entity): T {.inline.} =
-  return self.compornents[self.index[entity]]
+proc get*[T](self: Component[T], entity: Entity): T {.inline.} =
+  return self.components[self.index[entity]]
 
-iterator items*[T](self: Compornent[T]): T =
+iterator items*[T](self: Component[T]): T =
   for i in self.index.values:
-    yield self.compornents[i]
+    yield self.components[i]
 
-iterator pairs*[T](self: Compornent[T]): tuple[key: Entity, val: T] =
+iterator pairs*[T](self: Component[T]): tuple[key: Entity, val: T] =
   for e, i in self.index.pairs:
-    yield (e, self.compornents[i])
+    yield (e, self.components[i])
 
 proc has*(self: World, T: typedesc): bool {.inline.} =
-  self.compornents.hasKey(T.type.name)
+  self.components.hasKey(T.type.name)
 
 proc newEntity*(self: World): Entity =
   self.lastEntityId += 1
   Entity(id: self.lastEntityId, world: self)
 
-proc assign*[T](self: World, entity: Entity, compornent: T) =
+proc assign*[T](self: World, entity: Entity, component: T) =
   if self.has(T) == false:
-    self.newCompornent(T)
-  self.compornentsOf(T).assign(entity, compornent)
+    self.newComponent(T)
+  self.componentsOf(T).assign(entity, component)
 
-proc compornentsOf*(self: World, T: typedesc): Compornent[T] {.inline.} =
-  cast[Compornent[T]](self.compornents[T.type.name])
+proc componentsOf*(self: World, T: typedesc): Component[T] {.inline.} =
+  cast[Component[T]](self.components[T.type.name])
 
-proc newCompornent*(self: World, T: typedesc) {.inline.} =
-  self.compornents[T.type.name] = Compornent[T]()
+proc newComponent*(self: World, T: typedesc) {.inline.} =
+  self.components[T.type.name] = Component[T]()
 
 proc get*(self: World, entity: Entity, T: typedesc): T {.inline.} =
-  self.compornentsOf(T).get(entity)
+  self.componentsOf(T).get(entity)
 
 proc deleteEntity(self: World, entity: Entity) =
-  for c in self.compornents.values:
+  for c in self.components.values:
     c.remove(entity)
 
-proc with*[T](self: Entity, compornent: T): Entity {.inline, discardable.} =
-  self.world.assign(self, compornent)
+proc with*[T](self: Entity, component: T): Entity {.inline, discardable.} =
+  self.world.assign(self, component)
   self
 
 proc get*(self: Entity, T: typedesc): T {.inline.} =
@@ -89,7 +90,7 @@ proc isValid*(self: Entity): bool {.inline.} =
   self.id != InvalidEntityId
 
 proc has*(self: Entity, T: typedesc): bool {.inline.} =
-  self.world.has(T) and self.world.compornentsOf(T).has(self)
+  self.world.has(T) and self.world.componentsOf(T).has(self)
 
 macro hasAll*(self: Entity, types: varargs[typed]): untyped =
   var body = ""
@@ -156,8 +157,8 @@ suite "ECS test":
     check(world.newEntity.id == 5)
     check(e1.id == 3)
     check(e1.isValid)
-    e1.with(Foo()).with(42)
-    e2.with(Foo()).with(43)
+    e1.with(Foo()).with(42).with("entity of one")
+    e2.with(Foo()).with(43).with("entity of two")
     e1.delete()
     check(e1.isValid == false)
     check(e2.isValid)
@@ -168,6 +169,8 @@ suite "ECS test":
     check(e3.has(Foo))
     check(e3.has(int))
     check(e3.get(int) == 44)
+    check(e3.has(string) == false)
+    e3.delete
 
   test "for each":
     for n in 1..10:
@@ -175,7 +178,7 @@ suite "ECS test":
       if e.id == 5:
         e.delete()
     var result = newSeq[int]()
-    for v in world.compornentsOf(int):
+    for v in world.componentsOf(int):
       result.add(v)
     check(result == [2, 4, 6, 8, 12, 14, 16, 18, 20])
 
@@ -202,3 +205,5 @@ suite "ECS test":
     check(a.getAll(int, string) == (42, "string"))
     check(b.getAll(string, float) == ("string", 3.14))
     check(c.getAll(int, string, float) == (23, "hogehoge", 3.17))
+
+

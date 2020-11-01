@@ -22,12 +22,12 @@ echo a.get(int)
 echo a.get(string)
 echo a.get(Coord)
 echo b.get(Coord)
-for c in world.compornentsOf(Coord):
+for c in world.componentsOf(Coord):
   c.x.inc
   c.y.inc
 echo a.get(Coord)
 echo b.get(Coord)
-for e, c in world.compornentsOf(Coord):
+for e, c in world.componentsOf(Coord):
   c.x.inc
   c.y.inc
   e.with("world")
@@ -41,7 +41,7 @@ if a.hasAll(int, string, Coord):
   echo str
   echo c
 
-for e, c in world.compornentsOf(Coord):
+for e, c in world.componentsOf(Coord):
   let (number, str) = e.getAllOrContinue(int, string)
   echo number
   echo str
